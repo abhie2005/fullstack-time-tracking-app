@@ -3,9 +3,10 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import Auth from './Auth';
 import AdminPanel from './AdminPanel';
+import JobModal from './JobModal';
 import './App.css';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 // Configure axios to include token in requests
 axios.interceptors.request.use(
@@ -49,6 +50,10 @@ function App() {
   const [reportData, setReportData] = useState(null);
   const [reportPeriod, setReportPeriod] = useState('all');
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [currentJobId, setCurrentJobId] = useState(null);
+  const [showJobModal, setShowJobModal] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -65,8 +70,42 @@ function App() {
     }
   }, []);
 
+  const fetchJobs = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/jobs`);
+      setJobs(response.data.jobs);
+      // Set first job as current if no job is selected
+      if (response.data.jobs.length > 0 && !currentJobId) {
+        setCurrentJobId(response.data.jobs[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+    }
+  };
+
+  const handleJobCreated = () => {
+    fetchJobs();
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm('Are you sure you want to delete this job?')) {
+      return;
+    }
+    
+    try {
+      await axios.delete(`${API_BASE_URL}/jobs/${jobId}`);
+      fetchJobs();
+      if (currentJobId === jobId) {
+        setCurrentJobId(null);
+      }
+    } catch (error) {
+      setMessage(error.response?.data?.error || 'Error deleting job');
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
   useEffect(() => {
-    // Fetch user info to check admin status
+    // Fetch user info to check admin status and jobs
     const token = localStorage.getItem('token');
     if (token && isAuthenticated) {
       axios.get(`${API_BASE_URL}/me`)
@@ -78,6 +117,9 @@ function App() {
         .catch(error => {
           console.error('Error fetching user info:', error);
         });
+      
+      // Fetch jobs
+      fetchJobs();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -85,8 +127,7 @@ function App() {
   const handleLogin = (token, userData) => {
     setIsAuthenticated(true);
     setUser(userData);
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    // fetchJobs and fetchStatus will be called by useEffect
   };
 
   const handleLogout = () => {
@@ -106,7 +147,8 @@ function App() {
 
   const fetchStatus = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/status`);
+      const params = currentJobId ? { job_id: currentJobId } : {};
+      const response = await axios.get(`${API_BASE_URL}/status`, { params });
       setStatus(response.data);
     } catch (error) {
       console.error('Error fetching status:', error);
@@ -114,10 +156,17 @@ function App() {
   };
 
   const handleClockIn = async () => {
+    if (!currentJobId && jobs.length > 0) {
+      setMessage('Please select a job first');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    
     setLoading(true);
     setMessage('');
     try {
-      const response = await axios.post(`${API_BASE_URL}/clock-in`);
+      const data = currentJobId ? { job_id: currentJobId } : {};
+      const response = await axios.post(`${API_BASE_URL}/clock-in`, data);
       setMessage(response.data.message);
       fetchStatus();
       setTimeout(() => setMessage(''), 3000);
@@ -133,7 +182,8 @@ function App() {
     setLoading(true);
     setMessage('');
     try {
-      const response = await axios.post(`${API_BASE_URL}/clock-out`);
+      const data = currentJobId ? { job_id: currentJobId } : {};
+      const response = await axios.post(`${API_BASE_URL}/clock-out`, data);
       setMessage(response.data.message);
       fetchStatus();
       setTimeout(() => setMessage(''), 3000);
@@ -147,7 +197,11 @@ function App() {
 
   const fetchReport = async (period) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/report?period=${period}`);
+      const params = { period };
+      if (currentJobId) {
+        params.job_id = currentJobId;
+      }
+      const response = await axios.get(`${API_BASE_URL}/report`, { params });
       setReportData(response.data);
       setShowReport(true);
     } catch (error) {
@@ -321,6 +375,67 @@ function App() {
           </div>
         </header>
 
+        {/* Job Management Section */}
+        <div className="jobs-section">
+          <div className="jobs-header">
+            <h2>💼 My Jobs</h2>
+            <button 
+              onClick={() => {
+                setEditingJob(null);
+                setShowJobModal(true);
+              }}
+              className="btn-add-job"
+            >
+              ➕ Add Job
+            </button>
+          </div>
+          
+          {jobs.length === 0 ? (
+            <div className="no-jobs">
+              <p>No jobs yet. Create your first job to start tracking time!</p>
+            </div>
+          ) : (
+            <div className="jobs-list">
+              {jobs.map((job) => (
+                <div 
+                  key={job.id} 
+                  className={`job-card ${currentJobId === job.id ? 'active' : ''}`}
+                  onClick={() => setCurrentJobId(job.id)}
+                >
+                  <div className="job-card-content">
+                    <h3>{job.name}</h3>
+                    {job.description && <p className="job-description">{job.description}</p>}
+                    <p className="job-rate">${job.hourly_rate}/hour</p>
+                  </div>
+                  <div className="job-card-actions">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingJob(job);
+                        setShowJobModal(true);
+                      }}
+                      className="job-btn-edit"
+                      title="Edit job"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteJob(job.id);
+                      }}
+                      className="job-btn-delete"
+                      title="Delete job"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {message && (
           <div className={`message ${message.includes('Error') ? 'error' : 'success'}`}>
             {message}
@@ -454,6 +569,17 @@ function App() {
 
       {showAdminPanel && (
         <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
+
+      {showJobModal && (
+        <JobModal
+          onClose={() => {
+            setShowJobModal(false);
+            setEditingJob(null);
+          }}
+          onJobCreated={handleJobCreated}
+          editingJob={editingJob}
+        />
       )}
     </div>
   );

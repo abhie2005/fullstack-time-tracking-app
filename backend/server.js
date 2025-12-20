@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -10,13 +11,40 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Middleware
-app.use(cors());
+// Middleware - CORS configuration
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+  ? [process.env.FRONTEND_URL] 
+  : ['http://localhost:3000'];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(express.json());
 
 // Initialize SQLite database
-const dbPath = path.join(__dirname, 'timesheet.db');
+// For production, store in data folder; for development, use current directory
+const dbDir = process.env.NODE_ENV === 'production' 
+  ? path.join(process.cwd(), 'data')
+  : __dirname;
+  
+// Ensure data directory exists in production
+if (process.env.NODE_ENV === 'production') {
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+}
+
+const dbPath = path.join(dbDir, 'timesheet.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
@@ -46,27 +74,46 @@ const db = new sqlite3.Database(dbPath, (err) => {
       }
     });
     
-    // Create clock_records table with user_id
+    // Create jobs table
+    db.run(`CREATE TABLE IF NOT EXISTS jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      hourly_rate REAL DEFAULT 18.0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )`, (err) => {
+      if (err) {
+        console.error('Error creating jobs table:', err.message);
+      } else {
+        console.log('Jobs table ready');
+      }
+    });
+    
+    // Create clock_records table with user_id and job_id
     db.run(`CREATE TABLE IF NOT EXISTS clock_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
+      job_id INTEGER,
       date TEXT NOT NULL,
       clock_in TEXT,
       clock_out TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (job_id) REFERENCES jobs(id)
     )`, (err) => {
       if (err) {
         console.error('Error creating clock_records table:', err.message);
       } else {
         console.log('Clock records table ready');
         
-        // Migrate existing records if user_id column doesn't exist
+        // Migrate existing records - add columns if they don't exist
         db.run(`ALTER TABLE clock_records ADD COLUMN user_id INTEGER`, (err) => {
           // Ignore error if column already exists
-          if (err && !err.message.includes('duplicate column name')) {
-            console.log('Migration note:', err.message);
-          }
+        });
+        db.run(`ALTER TABLE clock_records ADD COLUMN job_id INTEGER`, (err) => {
+          // Ignore error if column already exists
         });
       }
     });
@@ -246,6 +293,147 @@ app.get('/api/me', authenticateToken, (req, res) => {
   );
 });
 
+// Jobs endpoints
+// Get all jobs for current user
+app.get('/api/jobs', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  
+  db.all(
+    'SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC',
+    [userId],
+    (err, jobs) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ jobs });
+    }
+  );
+});
+
+// Create a new job
+app.post('/api/jobs', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const { name, description, hourly_rate } = req.body;
+  
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'Job name is required' });
+  }
+  
+  const rate = hourly_rate ? parseFloat(hourly_rate) : 18.0;
+  
+  db.run(
+    'INSERT INTO jobs (user_id, name, description, hourly_rate) VALUES (?, ?, ?, ?)',
+    [userId, name.trim(), description || null, rate],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.status(201).json({
+        message: 'Job created successfully',
+        job: {
+          id: this.lastID,
+          user_id: userId,
+          name: name.trim(),
+          description: description || null,
+          hourly_rate: rate
+        }
+      });
+    }
+  );
+});
+
+// Update a job
+app.put('/api/jobs/:id', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const jobId = req.params.id;
+  const { name, description, hourly_rate } = req.body;
+  
+  // First verify the job belongs to the user
+  db.get(
+    'SELECT * FROM jobs WHERE id = ? AND user_id = ?',
+    [jobId, userId],
+    (err, job) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (!job) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      
+      const updateName = name ? name.trim() : job.name;
+      const updateDesc = description !== undefined ? description : job.description;
+      const updateRate = hourly_rate ? parseFloat(hourly_rate) : job.hourly_rate;
+      
+      db.run(
+        'UPDATE jobs SET name = ?, description = ?, hourly_rate = ? WHERE id = ? AND user_id = ?',
+        [updateName, updateDesc, updateRate, jobId, userId],
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+          res.json({
+            message: 'Job updated successfully',
+            job: {
+              id: jobId,
+              name: updateName,
+              description: updateDesc,
+              hourly_rate: updateRate
+            }
+          });
+        }
+      );
+    }
+  );
+});
+
+// Delete a job
+app.delete('/api/jobs/:id', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const jobId = req.params.id;
+  
+  // First verify the job belongs to the user
+  db.get(
+    'SELECT * FROM jobs WHERE id = ? AND user_id = ?',
+    [jobId, userId],
+    (err, job) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (!job) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+      
+      // Check if there are any clock records for this job
+      db.get(
+        'SELECT COUNT(*) as count FROM clock_records WHERE job_id = ?',
+        [jobId],
+        (err, result) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+          
+          if (result.count > 0) {
+            return res.status(400).json({ 
+              error: 'Cannot delete job with existing clock records. Please delete records first.' 
+            });
+          }
+          
+          db.run(
+            'DELETE FROM jobs WHERE id = ? AND user_id = ?',
+            [jobId, userId],
+            function(err) {
+              if (err) {
+                return res.status(500).json({ error: err.message });
+              }
+              res.json({ message: 'Job deleted successfully' });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
 // Get all users endpoint (Admin only)
 app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
   db.all(
@@ -278,32 +466,41 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 app.get('/api/status', authenticateToken, (req, res) => {
   const today = getToday();
   const userId = req.user.id;
+  const { job_id } = req.query; // Optional job filter
   
-  db.get(
-    'SELECT * FROM clock_records WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1',
-    [userId, today],
-    (err, row) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      
-      if (!row) {
-        return res.json({ 
-          clockedIn: false, 
-          clockInTime: null, 
-          clockOutTime: null,
-          date: today 
-        });
-      }
-      
-      res.json({
-        clockedIn: row.clock_out === null,
-        clockInTime: row.clock_in,
-        clockOutTime: row.clock_out,
-        date: row.date
+  let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ?';
+  let params = [userId, today];
+  
+  if (job_id) {
+    query += ' AND job_id = ?';
+    params.push(job_id);
+  }
+  
+  query += ' ORDER BY id DESC LIMIT 1';
+  
+  db.get(query, params, (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (!row) {
+      return res.json({ 
+        clockedIn: false, 
+        clockInTime: null, 
+        clockOutTime: null,
+        date: today,
+        jobId: job_id || null
       });
     }
-  );
+    
+    res.json({
+      clockedIn: row.clock_out === null,
+      clockInTime: row.clock_in,
+      clockOutTime: row.clock_out,
+      date: row.date,
+      jobId: row.job_id || null
+    });
+  });
 });
 
 // Clock in endpoint
@@ -311,12 +508,38 @@ app.post('/api/clock-in', authenticateToken, (req, res) => {
   const today = getToday();
   const currentTime = getCurrentTime();
   const userId = req.user.id;
+  const { job_id } = req.body; // Optional job_id
   
-  // Check if already clocked in today
-  db.get(
-    'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL',
-    [userId, today],
-    (err, row) => {
+  // If job_id is provided, verify it belongs to the user
+  if (job_id) {
+    db.get(
+      'SELECT * FROM jobs WHERE id = ? AND user_id = ?',
+      [job_id, userId],
+      (err, job) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        if (!job) {
+          return res.status(400).json({ error: 'Invalid job' });
+        }
+        proceedWithClockIn();
+      }
+    );
+  } else {
+    proceedWithClockIn();
+  }
+  
+  function proceedWithClockIn() {
+    let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL';
+    let params = [userId, today];
+    
+    if (job_id) {
+      query += ' AND job_id = ?';
+      params.push(job_id);
+    }
+    
+    // Check if already clocked in today
+    db.get(query, params, (err, row) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -327,35 +550,25 @@ app.post('/api/clock-in', authenticateToken, (req, res) => {
         });
       }
       
-      // Check if there's a record for today (with clock out)
-      db.get(
-        'SELECT * FROM clock_records WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1',
-        [userId, today],
-        (err, existingRow) => {
+      // Create new record
+      db.run(
+        'INSERT INTO clock_records (user_id, job_id, date, clock_in, clock_out) VALUES (?, ?, ?, ?, ?)',
+        [userId, job_id || null, today, currentTime, null],
+        function(err) {
           if (err) {
             return res.status(500).json({ error: err.message });
           }
-          
-          // Create new record
-          db.run(
-            'INSERT INTO clock_records (user_id, date, clock_in, clock_out) VALUES (?, ?, ?, ?)',
-            [userId, today, currentTime, null],
-            function(err) {
-              if (err) {
-                return res.status(500).json({ error: err.message });
-              }
-              res.json({ 
-                message: 'Clocked in successfully',
-                clockInTime: currentTime,
-                date: today,
-                id: this.lastID
-              });
-            }
-          );
+          res.json({ 
+            message: 'Clocked in successfully',
+            clockInTime: currentTime,
+            date: today,
+            jobId: job_id || null,
+            id: this.lastID
+          });
         }
       );
-    }
-  );
+    });
+  }
 });
 
 // Clock out endpoint
@@ -363,113 +576,129 @@ app.post('/api/clock-out', authenticateToken, (req, res) => {
   const today = getToday();
   const currentTime = getCurrentTime();
   const userId = req.user.id;
+  const { job_id } = req.body; // Optional job_id
+  
+  let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL';
+  let params = [userId, today];
+  
+  if (job_id) {
+    query += ' AND job_id = ?';
+    params.push(job_id);
+  }
+  
+  query += ' ORDER BY id DESC LIMIT 1';
   
   // Find the most recent clock in without a clock out
-  db.get(
-    'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL ORDER BY id DESC LIMIT 1',
-    [userId, today],
-    (err, row) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      
-      if (!row) {
-        return res.status(400).json({ 
-          error: 'You are not clocked in. Please clock in first.' 
+  db.get(query, params, (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (!row) {
+      return res.status(400).json({ 
+        error: 'You are not clocked in. Please clock in first.' 
+      });
+    }
+    
+    // Update the record with clock out time
+    db.run(
+      'UPDATE clock_records SET clock_out = ? WHERE id = ? AND user_id = ?',
+      [currentTime, row.id, userId],
+      function(err) {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ 
+          message: 'Clocked out successfully',
+          clockInTime: row.clock_in,
+          clockOutTime: currentTime,
+          date: today,
+          jobId: row.job_id || null
         });
       }
-      
-      // Update the record with clock out time
-      db.run(
-        'UPDATE clock_records SET clock_out = ? WHERE id = ? AND user_id = ?',
-        [currentTime, row.id, userId],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: err.message });
-          }
-          res.json({ 
-            message: 'Clocked out successfully',
-            clockInTime: row.clock_in,
-            clockOutTime: currentTime,
-            date: today
-          });
-        }
-      );
-    }
-  );
+    );
+  });
 });
 
 // Get report endpoint
 app.get('/api/report', authenticateToken, (req, res) => {
-  const { period = 'all' } = req.query;
+  const { period = 'all', job_id } = req.query;
   const userId = req.user.id;
-  let query = 'SELECT * FROM clock_records WHERE user_id = ?';
+  let query = 'SELECT cr.*, j.name as job_name, j.hourly_rate FROM clock_records cr LEFT JOIN jobs j ON cr.job_id = j.id WHERE cr.user_id = ?';
   const params = [userId];
+  
+  // Filter by job if specified
+  if (job_id) {
+    query += ' AND cr.job_id = ?';
+    params.push(job_id);
+  }
   
   const now = new Date();
   
   if (period === 'today') {
-    query += ' AND date = ?';
+    query += ' AND cr.date = ?';
     params.push(getToday());
   } else if (period === 'week') {
     const weekAgo = new Date(now);
     weekAgo.setDate(weekAgo.getDate() - 7);
-    query += ' AND date >= ?';
+    query += ' AND cr.date >= ?';
     params.push(weekAgo.toISOString().split('T')[0]);
   } else if (period === 'month') {
     const monthAgo = new Date(now);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
-    query += ' AND date >= ?';
+    query += ' AND cr.date >= ?';
     params.push(monthAgo.toISOString().split('T')[0]);
   }
   
-  query += ' ORDER BY date DESC, id DESC';
+  query += ' ORDER BY cr.date DESC, cr.id DESC';
   
   db.all(query, params, (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     
-    const HOURLY_RATE = 18; // $18 per hour
-    
     // Calculate hours and salary for each record
     const recordsWithSalary = rows.map(row => {
       let hours = 0;
       let salary = 0;
+      const hourlyRate = row.hourly_rate || 18.0; // Use job rate or default
       
       if (row.clock_in && row.clock_out) {
         const inTime = new Date(`${row.date}T${row.clock_in}`);
         const outTime = new Date(`${row.date}T${row.clock_out}`);
         hours = (outTime - inTime) / (1000 * 60 * 60);
-        salary = hours * HOURLY_RATE;
+        salary = hours * hourlyRate;
       }
       
       return {
         ...row,
         hours: hours > 0 ? hours.toFixed(2) : null,
-        salary: salary > 0 ? salary.toFixed(2) : null
+        salary: salary > 0 ? salary.toFixed(2) : null,
+        hourly_rate: hourlyRate
       };
     });
     
     // Calculate total hours and total salary for completed records
-    const totalHours = rows
-      .filter(row => row.clock_in && row.clock_out)
-      .reduce((total, row) => {
+    let totalHours = 0;
+    let totalSalary = 0;
+    
+    rows.forEach(row => {
+      if (row.clock_in && row.clock_out) {
         const inTime = new Date(`${row.date}T${row.clock_in}`);
         const outTime = new Date(`${row.date}T${row.clock_out}`);
         const hours = (outTime - inTime) / (1000 * 60 * 60);
-        return total + hours;
-      }, 0);
-    
-    const totalSalary = totalHours * HOURLY_RATE;
+        const hourlyRate = row.hourly_rate || 18.0;
+        totalHours += hours;
+        totalSalary += hours * hourlyRate;
+      }
+    });
     
     res.json({
       records: recordsWithSalary,
       totalRecords: rows.length,
       completedRecords: rows.filter(row => row.clock_in && row.clock_out).length,
       totalHours: totalHours.toFixed(2),
-      totalSalary: totalSalary.toFixed(2),
-      hourlyRate: HOURLY_RATE
+      totalSalary: totalSalary.toFixed(2)
     });
   });
 });
