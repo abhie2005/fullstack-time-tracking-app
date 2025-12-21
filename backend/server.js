@@ -48,8 +48,9 @@ const dbPath = path.join(dbDir, 'timesheet.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
+    console.error('Database path:', dbPath);
   } else {
-    console.log('Connected to SQLite database');
+    console.log('Connected to SQLite database at:', dbPath);
     
     // Create users table
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -703,10 +704,25 @@ app.get('/api/report', authenticateToken, (req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
+// Start server - must bind to 0.0.0.0 for Render to detect it
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server accessible at: http://0.0.0.0:${PORT}`);
 });
+
+// Handle server errors
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+  } else {
+    console.error('❌ Server error:', err);
+  }
+  process.exit(1);
+});
+
+// Ensure server starts even if there are async initialization issues
+console.log(`Attempting to start server on port ${PORT}...`);
 // Graceful shutdown
 process.on('SIGINT', () => {
   db.close((err) => {
