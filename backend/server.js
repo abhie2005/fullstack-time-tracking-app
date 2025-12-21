@@ -16,6 +16,14 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [process.env.FRONTEND_URL] 
   : ['http://localhost:3000'];
 
+// Start server - must bind to 0.0.0.0 for Render to detect it
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server accessible at: http://0.0.0.0:${PORT}`);
+});
+
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -704,12 +712,6 @@ app.get('/api/report', authenticateToken, (req, res) => {
   });
 });
 
-// Start server - must bind to 0.0.0.0 for Render to detect it
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Server accessible at: http://0.0.0.0:${PORT}`);
-});
 
 // Handle server errors
 server.on('error', (err) => {
