@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './AdminPanel.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app.onrender.com/api';
 
 function AdminPanel({ onClose }) {
   const [users, setUsers] = useState([]);

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import './Auth.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app.onrender.com/api';
 
 function Auth({ onLogin }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -41,7 +41,17 @@ function Auth({ onLogin }) {
       
       onLogin(response.data.token, response.data.user);
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred');
+      console.error('Registration/Login error:', err);
+      console.error('Error response:', err.response);
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else if (err.message) {
+        setError(err.message);
+      } else if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
+        setError('Cannot connect to server. Please make sure the backend is running.');
+      } else {
+        setError('An error occurred. Please check the console for details.');
+      }
     } finally {
       setLoading(false);
     }

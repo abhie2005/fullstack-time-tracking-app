@@ -13,28 +13,37 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 
 // Middleware - CORS configuration
 const allowedOrigins = process.env.NODE_ENV === 'production' 
-  ? [process.env.FRONTEND_URL] 
+  ? (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
   : ['http://localhost:3000'];
-
-// Start server - must bind to 0.0.0.0 for Render to detect it
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Server accessible at: http://0.0.0.0:${PORT}`);
-});
-
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // In production, check if origin matches
+    if (process.env.NODE_ENV === 'production') {
+      if (allowedOrigins.length === 0 || allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      } else {
+        console.log('CORS blocked origin:', origin);
+        console.log('Allowed origins:', allowedOrigins);
+        return callback(new Error('Not allowed by CORS'));
+      }
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // In development, allow localhost
+      if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+        return callback(null, true);
+      } else {
+        return callback(new Error('Not allowed by CORS'));
+      }
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json());
 app.use(express.json());
@@ -182,36 +191,46 @@ const getCurrentTime = () => {
 app.post('/api/register', async (req, res) => {
   const { username, email, password } = req.body;
 
+  console.log('Registration attempt:', { username, email, passwordLength: password?.length });
+
   if (!username || !email || !password) {
+    console.log('Registration failed: Missing required fields');
     return res.status(400).json({ error: 'Username, email, and password are required' });
   }
 
   if (password.length < 6) {
+    console.log('Registration failed: Password too short');
     return res.status(400).json({ error: 'Password must be at least 6 characters long' });
   }
 
   try {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('Password hashed successfully');
 
     // Check if this is the first user (make them admin)
     db.get('SELECT COUNT(*) as count FROM users', [], (err, result) => {
       if (err) {
+        console.error('Database error checking user count:', err);
         return res.status(500).json({ error: err.message });
       }
       
       const isAdmin = result.count === 0 ? 1 : 0; // First user becomes admin
+      console.log(`User will be admin: ${isAdmin === 1}, Total users: ${result.count}`);
       
       db.run(
         'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
         [username, email, hashedPassword, isAdmin],
         function(err) {
           if (err) {
+            console.error('Database error inserting user:', err);
             if (err.message.includes('UNIQUE constraint failed')) {
               return res.status(400).json({ error: 'Username or email already exists' });
             }
             return res.status(500).json({ error: err.message });
           }
+
+          console.log('User created successfully with ID:', this.lastID);
 
           // Generate JWT token
           const token = jwt.sign(
@@ -220,6 +239,7 @@ app.post('/api/register', async (req, res) => {
             { expiresIn: '7d' }
           );
 
+          console.log('JWT token generated successfully');
           res.status(201).json({
             message: 'User registered successfully',
             token,
@@ -229,7 +249,8 @@ app.post('/api/register', async (req, res) => {
       );
     });
   } catch (error) {
-    res.status(500).json({ error: 'Error registering user' });
+    console.error('Registration error:', error);
+    res.status(500).json({ error: error.message || 'Error registering user' });
   }
 });
 
@@ -237,7 +258,10 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
 
+  console.log('Login attempt for:', username);
+
   if (!username || !password) {
+    console.log('Login failed: Missing username or password');
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
@@ -246,10 +270,12 @@ app.post('/api/login', (req, res) => {
     [username, username],
     async (err, user) => {
       if (err) {
+        console.error('Database error during login:', err);
         return res.status(500).json({ error: err.message });
       }
 
       if (!user) {
+        console.log('Login failed: User not found');
         return res.status(401).json({ error: 'Invalid username or password' });
       }
 
@@ -257,6 +283,7 @@ app.post('/api/login', (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
 
         if (!validPassword) {
+          console.log('Login failed: Invalid password');
           return res.status(401).json({ error: 'Invalid username or password' });
         }
 
@@ -268,16 +295,28 @@ app.post('/api/login', (req, res) => {
           { expiresIn: '7d' }
         );
 
+        console.log('Login successful for user:', user.username);
         res.json({
           message: 'Login successful',
           token,
           user: { id: user.id, username: user.username, email: user.email, isAdmin }
         });
       } catch (error) {
+        console.error('Error during login:', error);
         res.status(500).json({ error: 'Error during login' });
       }
     }
   );
+});
+
+// Health check endpoint (for deployment verification)
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Get current user endpoint
@@ -713,6 +752,15 @@ app.get('/api/report', authenticateToken, (req, res) => {
 });
 
 
+// Start server - must bind to 0.0.0.0 for Render to detect it
+// IMPORTANT: Server must start AFTER all routes and middleware are configured
+console.log(`Attempting to start server on port ${PORT}...`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server accessible at: http://0.0.0.0:${PORT}`);
+});
+
 // Handle server errors
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
@@ -723,8 +771,6 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-// Ensure server starts even if there are async initialization issues
-console.log(`Attempting to start server on port ${PORT}...`);
 // Graceful shutdown
 process.on('SIGINT', () => {
   db.close((err) => {

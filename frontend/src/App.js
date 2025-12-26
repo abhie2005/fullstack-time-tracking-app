@@ -6,7 +6,7 @@ import AdminPanel from './AdminPanel';
 import JobModal from './JobModal';
 import './App.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app.onrender.com/api';
 
 // Configure axios to include token in requests
 axios.interceptors.request.use(
