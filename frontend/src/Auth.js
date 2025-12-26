@@ -94,6 +94,9 @@ function Auth({ onLogin }) {
           <p className="auth-subtitle">
             {isLogin ? 'Welcome back!' : 'Create your account'}
           </p>
+          <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '8px' }}>
+            Backend: {API_BASE_URL}
+          </p>
         </div>
 
         {error && (
