@@ -6,9 +6,8 @@ import AdminPanel from './AdminPanel';
 import JobModal from './JobModal';
 import './App.css';
 
-// Backend API URL - Update this to match your actual backend deployment URL
-// On Render, this is typically: https://{your-service-name}.onrender.com/api
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://clock-in-out-backend.onrender.com/api';
+// Backend API URL
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app-backend.onrender.com/api';
 
 // Configure axios to include token in requests
 axios.interceptors.request.use(

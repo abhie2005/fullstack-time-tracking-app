@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './Auth.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://clock-in-out-backend.onrender.com/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app-backend.onrender.com/api';
 
 function Auth({ onLogin }) {
   const [isLogin, setIsLogin] = useState(true);
