@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './AdminPanel.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app.onrender.com/api';
+// Backend API URL - Update this to match your actual backend deployment URL
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://clock-in-out-backend.onrender.com/api';
 
 function AdminPanel({ onClose }) {
   const [users, setUsers] = useState([]);

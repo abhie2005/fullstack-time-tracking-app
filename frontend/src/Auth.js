@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './Auth.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app.onrender.com/api';
+// Backend API URL - Update this to match your actual backend deployment URL
+// On Render, this is typically: https://{your-service-name}.onrender.com/api
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://clock-in-out-backend.onrender.com/api';
 
 function Auth({ onLogin }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,6 +15,29 @@ function Auth({ onLogin }) {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('checking');
+
+  // Test backend connection on mount
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/test`, { timeout: 5000 });
+        if (response.data) {
+          setBackendStatus('connected');
+          console.log('✅ Backend connection successful:', response.data);
+        }
+      } catch (err) {
+        setBackendStatus('disconnected');
+        console.error('❌ Backend connection failed:', err);
+        console.error('Backend URL:', API_BASE_URL);
+        if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
+          // Don't set error here, just log - let the user try to register to see the actual error
+          console.warn('Backend appears to be unreachable. Check if backend is deployed.');
+        }
+      }
+    };
+    testConnection();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -43,14 +68,18 @@ function Auth({ onLogin }) {
     } catch (err) {
       console.error('Registration/Login error:', err);
       console.error('Error response:', err.response);
+      console.error('API URL being used:', `${API_BASE_URL}${endpoint}`);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      
       if (err.response?.data?.error) {
         setError(err.response.data.error);
+      } else if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED' || err.code === 'ERR_INTERNET_DISCONNECTED') {
+        setError(`Cannot connect to server at ${API_BASE_URL}. Please check: 1) Backend is deployed and running, 2) Backend URL is correct, 3) CORS is configured properly.`);
       } else if (err.message) {
-        setError(err.message);
-      } else if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
-        setError('Cannot connect to server. Please make sure the backend is running.');
+        setError(`${err.message} (Trying to connect to: ${API_BASE_URL})`);
       } else {
-        setError('An error occurred. Please check the console for details.');
+        setError(`Network error. Check console for details. API URL: ${API_BASE_URL}`);
       }
     } finally {
       setLoading(false);
