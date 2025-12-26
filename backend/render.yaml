@@ -12,5 +12,5 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        value: https://fullstack-time-tracker-app.onrender.com
+        value: https://fullstack-time-tracker-app.onrender.com/
 

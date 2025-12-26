@@ -9,11 +9,14 @@ const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || '9f2c7b8e1a4d5f6c3e0b9a7d2f4e6c8b1a5d9e7c0f3b8a6d4e2c1f5b9a';
 
 // Middleware - CORS configuration
+// Normalize FRONTEND_URL (remove trailing slash for comparison, browsers send origin without trailing slash)
+const normalizeUrl = (url) => url ? url.replace(/\/$/, '') : '';
+const frontendUrl = normalizeUrl(process.env.FRONTEND_URL);
 const allowedOrigins = process.env.NODE_ENV === 'production' 
-  ? (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+  ? (frontendUrl ? [frontendUrl] : [])
   : ['http://localhost:3000'];
 
 app.use(cors({
@@ -26,20 +29,24 @@ app.use(cors({
     // In production, check if origin matches
     if (process.env.NODE_ENV === 'production') {
       // If FRONTEND_URL is not set or is a placeholder, allow all origins (for deployment flexibility)
-      if (!process.env.FRONTEND_URL || process.env.FRONTEND_URL.includes('your-frontend-url')) {
+      if (!frontendUrl || process.env.FRONTEND_URL.includes('your-frontend-url')) {
         console.log('⚠️  CORS: FRONTEND_URL not properly configured, allowing all origins');
         console.log('   To restrict CORS, set FRONTEND_URL environment variable to your frontend URL');
         return callback(null, true);
       }
       
+      // Normalize origin (remove trailing slash) for comparison
+      const normalizedOrigin = normalizeUrl(origin);
+      
       // Check if origin matches allowed origins
-      if (allowedOrigins.length > 0 && allowedOrigins.indexOf(origin) !== -1) {
+      if (allowedOrigins.length > 0 && allowedOrigins.indexOf(normalizedOrigin) !== -1) {
         return callback(null, true);
       } else if (allowedOrigins.length === 0) {
         // If no origins configured, allow all (for initial setup)
         return callback(null, true);
       } else {
         console.log('⚠️  CORS blocked origin:', origin);
+        console.log('   Normalized origin:', normalizedOrigin);
         console.log('   Allowed origins:', allowedOrigins);
         console.log('   FRONTEND_URL env:', process.env.FRONTEND_URL);
         return callback(new Error('Not allowed by CORS'));
