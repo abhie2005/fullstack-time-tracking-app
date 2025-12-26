@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './Auth.css';
 
-// Backend API URL - Update this to match your actual backend deployment URL
-// On Render, this is typically: https://{your-service-name}.onrender.com/api
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://clock-in-out-backend.onrender.com/api';
 
 function Auth({ onLogin }) {
@@ -52,30 +50,36 @@ function Auth({ onLogin }) {
     setError('');
     setLoading(true);
 
+    const endpoint = isLogin ? '/login' : '/register';  // ✅ moved here
+
     try {
-      const endpoint = isLogin ? '/login' : '/register';
-      const data = isLogin 
+      const data = isLogin
         ? { username: formData.username, password: formData.password }
         : formData;
 
       const response = await axios.post(`${API_BASE_URL}${endpoint}`, data);
-      
-      // Store token and user data
+
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
-      
+
       onLogin(response.data.token, response.data.user);
     } catch (err) {
       console.error('Registration/Login error:', err);
       console.error('Error response:', err.response);
-      console.error('API URL being used:', `${API_BASE_URL}${endpoint}`);
+      console.error('API URL being used:', `${API_BASE_URL}${endpoint}`); // ✅ now works
       console.error('Error code:', err.code);
       console.error('Error message:', err.message);
-      
+
       if (err.response?.data?.error) {
         setError(err.response.data.error);
-      } else if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED' || err.code === 'ERR_INTERNET_DISCONNECTED') {
-        setError(`Cannot connect to server at ${API_BASE_URL}. Please check: 1) Backend is deployed and running, 2) Backend URL is correct, 3) CORS is configured properly.`);
+      } else if (
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNREFUSED' ||
+        err.code === 'ERR_INTERNET_DISCONNECTED'
+      ) {
+        setError(
+          `Cannot connect to server at ${API_BASE_URL}. Please check: 1) Backend is deployed and running, 2) Backend URL is correct, 3) CORS is configured properly.`
+        );
       } else if (err.message) {
         setError(`${err.message} (Trying to connect to: ${API_BASE_URL})`);
       } else {
