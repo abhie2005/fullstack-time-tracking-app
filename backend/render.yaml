@@ -13,4 +13,7 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: https://your-frontend-url.vercel.app
+        # IMPORTANT: Replace the above value with your actual frontend URL
+        # Example: https://your-app.vercel.app or https://your-app.netlify.app
+        # If left as placeholder, CORS will allow all origins (less secure but works for testing)
 

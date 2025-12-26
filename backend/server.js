@@ -25,11 +25,23 @@ app.use(cors({
     
     // In production, check if origin matches
     if (process.env.NODE_ENV === 'production') {
-      if (allowedOrigins.length === 0 || allowedOrigins.indexOf(origin) !== -1) {
+      // If FRONTEND_URL is not set or is a placeholder, allow all origins (for deployment flexibility)
+      if (!process.env.FRONTEND_URL || process.env.FRONTEND_URL.includes('your-frontend-url')) {
+        console.log('⚠️  CORS: FRONTEND_URL not properly configured, allowing all origins');
+        console.log('   To restrict CORS, set FRONTEND_URL environment variable to your frontend URL');
+        return callback(null, true);
+      }
+      
+      // Check if origin matches allowed origins
+      if (allowedOrigins.length > 0 && allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      } else if (allowedOrigins.length === 0) {
+        // If no origins configured, allow all (for initial setup)
         return callback(null, true);
       } else {
-        console.log('CORS blocked origin:', origin);
-        console.log('Allowed origins:', allowedOrigins);
+        console.log('⚠️  CORS blocked origin:', origin);
+        console.log('   Allowed origins:', allowedOrigins);
+        console.log('   FRONTEND_URL env:', process.env.FRONTEND_URL);
         return callback(new Error('Not allowed by CORS'));
       }
     } else {
@@ -47,6 +59,18 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 app.use(express.json());
+
+// Request logging middleware (for debugging)
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (req.method === 'POST' && req.path === '/api/register') {
+    console.log('Registration request headers:', {
+      origin: req.headers.origin,
+      'content-type': req.headers['content-type']
+    });
+  }
+  next();
+});
 
 // Initialize SQLite database
 // For production, store in data folder; for development, use current directory
@@ -316,6 +340,16 @@ app.get('/health', (req, res) => {
     port: PORT,
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString()
+  });
+});
+
+// Test endpoint for CORS and connectivity
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    message: 'API is working!',
+    cors: 'CORS is configured correctly',
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin || 'No origin header'
   });
 });
 
