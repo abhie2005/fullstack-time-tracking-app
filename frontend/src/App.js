@@ -148,7 +148,11 @@ function App() {
 
   const fetchStatus = async () => {
     try {
-      const params = currentJobId ? { job_id: currentJobId } : {};
+      // Get user's local date
+      const localDate = new Date().toISOString().split('T')[0];
+      const params = currentJobId 
+        ? { job_id: currentJobId, date: localDate }
+        : { date: localDate };
       const response = await axios.get(`${API_BASE_URL}/status`, { params });
       setStatus(response.data);
     } catch (error) {
@@ -166,7 +170,15 @@ function App() {
     setLoading(true);
     setMessage('');
     try {
-      const data = currentJobId ? { job_id: currentJobId } : {};
+      // Get user's local date and time
+      const now = new Date();
+      const localDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const localTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+      const timezoneOffset = -now.getTimezoneOffset() / 60; // Offset in hours
+      
+      const data = currentJobId 
+        ? { job_id: currentJobId, date: localDate, time: localTime, timezone_offset: timezoneOffset }
+        : { date: localDate, time: localTime, timezone_offset: timezoneOffset };
       const response = await axios.post(`${API_BASE_URL}/clock-in`, data);
       setMessage(response.data.message);
       fetchStatus();
@@ -183,7 +195,14 @@ function App() {
     setLoading(true);
     setMessage('');
     try {
-      const data = currentJobId ? { job_id: currentJobId } : {};
+      // Get user's local time
+      const now = new Date();
+      const localTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+      const timezoneOffset = -now.getTimezoneOffset() / 60; // Offset in hours
+      
+      const data = currentJobId 
+        ? { job_id: currentJobId, time: localTime, timezone_offset: timezoneOffset }
+        : { time: localTime, timezone_offset: timezoneOffset };
       const response = await axios.post(`${API_BASE_URL}/clock-out`, data);
       setMessage(response.data.message);
       fetchStatus();

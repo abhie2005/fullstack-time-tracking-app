@@ -553,12 +553,13 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 
 // Get current status (whether user has clocked in today)
 app.get('/api/status', authenticateToken, (req, res) => {
-  const today = getToday();
+  // Use user's local date from query, or fallback to server date
+  const userDate = req.query.date || getToday();
   const userId = req.user.id;
   const { job_id } = req.query; // Optional job filter
   
   let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ?';
-  let params = [userId, today];
+  let params = [userId, userDate];
   
   if (job_id) {
     query += ' AND job_id = ?';
@@ -577,7 +578,7 @@ app.get('/api/status', authenticateToken, (req, res) => {
         clockedIn: false, 
         clockInTime: null, 
         clockOutTime: null,
-        date: today,
+        date: userDate,
         jobId: job_id || null
       });
     }
@@ -594,8 +595,9 @@ app.get('/api/status', authenticateToken, (req, res) => {
 
 // Clock in endpoint
 app.post('/api/clock-in', authenticateToken, (req, res) => {
-  const today = getToday();
-  const currentTime = getCurrentTime();
+  // Use user's local time and date from request, or fallback to server time
+  const userDate = req.body.date || getToday();
+  const userTime = req.body.time || getCurrentTime();
   const userId = req.user.id;
   const { job_id } = req.body; // Optional job_id
   
@@ -620,7 +622,7 @@ app.post('/api/clock-in', authenticateToken, (req, res) => {
   
   function proceedWithClockIn() {
     let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL';
-    let params = [userId, today];
+    let params = [userId, userDate];
     
     if (job_id) {
       query += ' AND job_id = ?';
@@ -639,18 +641,18 @@ app.post('/api/clock-in', authenticateToken, (req, res) => {
         });
       }
       
-      // Create new record
+      // Create new record with user's local time
       db.run(
         'INSERT INTO clock_records (user_id, job_id, date, clock_in, clock_out) VALUES (?, ?, ?, ?, ?)',
-        [userId, job_id || null, today, currentTime, null],
+        [userId, job_id || null, userDate, userTime, null],
         function(err) {
           if (err) {
             return res.status(500).json({ error: err.message });
           }
           res.json({ 
             message: 'Clocked in successfully',
-            clockInTime: currentTime,
-            date: today,
+            clockInTime: userTime,
+            date: userDate,
             jobId: job_id || null,
             id: this.lastID
           });
@@ -662,13 +664,14 @@ app.post('/api/clock-in', authenticateToken, (req, res) => {
 
 // Clock out endpoint
 app.post('/api/clock-out', authenticateToken, (req, res) => {
-  const today = getToday();
-  const currentTime = getCurrentTime();
+  // Use user's local time from request, or fallback to server time
+  const userTime = req.body.time || getCurrentTime();
   const userId = req.user.id;
   const { job_id } = req.body; // Optional job_id
   
-  let query = 'SELECT * FROM clock_records WHERE user_id = ? AND date = ? AND clock_out IS NULL';
-  let params = [userId, today];
+  // Find the most recent clock in without a clock out (regardless of date)
+  let query = 'SELECT * FROM clock_records WHERE user_id = ? AND clock_out IS NULL';
+  let params = [userId];
   
   if (job_id) {
     query += ' AND job_id = ?';
@@ -689,10 +692,10 @@ app.post('/api/clock-out', authenticateToken, (req, res) => {
       });
     }
     
-    // Update the record with clock out time
+    // Update the record with user's local clock out time
     db.run(
       'UPDATE clock_records SET clock_out = ? WHERE id = ? AND user_id = ?',
-      [currentTime, row.id, userId],
+      [userTime, row.id, userId],
       function(err) {
         if (err) {
           return res.status(500).json({ error: err.message });
@@ -700,8 +703,8 @@ app.post('/api/clock-out', authenticateToken, (req, res) => {
         res.json({ 
           message: 'Clocked out successfully',
           clockInTime: row.clock_in,
-          clockOutTime: currentTime,
-          date: today,
+          clockOutTime: userTime,
+          date: row.date,
           jobId: row.job_id || null
         });
       }
