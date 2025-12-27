@@ -7,7 +7,6 @@ A full-stack web application to track your office hours with clock in/out functi
 ## Features
 
 - ✅ User authentication (Login/Register)
-- ✅ **Email verification with OTP** (One-Time Password)
 - ✅ Secure JWT token-based authentication
 - ✅ Clock In/Out functionality
 - ✅ Real-time status display
@@ -28,7 +27,6 @@ A full-stack web application to track your office hours with clock in/out functi
 - SQLite3
 - JWT (JSON Web Tokens) for authentication
 - bcryptjs for password hashing
-- nodemailer for email OTP delivery
 
 ### Frontend
 - React
@@ -55,25 +53,6 @@ A full-stack web application to track your office hours with clock in/out functi
    cd ../frontend
    npm install
    ```
-
-3. **Configure Email Settings (Required for OTP)**
-   
-   Create a `.env` file in the `backend` directory with the following variables:
-   ```env
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=your-email@gmail.com
-   SMTP_PASS=your-app-password
-   ```
-   
-   **For Gmail:**
-   - Use an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password
-   - Enable 2-Step Verification first, then generate an App Password
-   - Use `smtp.gmail.com` as the host and `587` as the port
-   
-   **For other email providers:**
-   - Check your email provider's SMTP settings
-   - Common providers: Outlook (`smtp-mail.outlook.com`), Yahoo (`smtp.mail.yahoo.com`), etc.
 
 ### Running the Application
 
@@ -102,10 +81,7 @@ For auto-reload during development:
 
 1. **Register/Login**: 
    - First-time users should register with a username, email, and password
-   - **After registration or first login, you'll receive an OTP via email**
-   - Enter the 6-digit OTP to verify your email address
-   - Once verified, you can access the system
-   - Existing verified users can login directly with their credentials
+   - Existing users can login with their credentials
    - Your session will be remembered using JWT tokens stored in browser localStorage
 
 2. **Clock In**: Click the "Clock In" button when you arrive at the office
@@ -146,17 +122,10 @@ CREATE TABLE users (
   email TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   is_admin INTEGER DEFAULT 0,
-  email_verified INTEGER DEFAULT 0,
-  otp TEXT,
-  otp_expires_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 ```
-Note: 
-- `is_admin` is set to 1 for the first registered user (admin), 0 for all other users
-- `email_verified` tracks whether the user's email has been verified (0 = not verified, 1 = verified)
-- `otp` stores the one-time password for email verification
-- `otp_expires_at` stores the expiration time for the OTP (10 minutes)
+Note: `is_admin` is set to 1 for the first registered user (admin), 0 for all other users.
 
 CREATE TABLE clock_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,19 +150,7 @@ Register a new user
 #### POST `/api/login`
 Login with existing credentials
 - Body: `{ username, password }` (username can be username or email)
-- Returns: 
-  - If email is verified: JWT token and user data
-  - If email is not verified: `{ requiresVerification: true, userId, email }` - OTP will be sent automatically
-
-#### POST `/api/verify-otp`
-Verify email with OTP
-- Body: `{ userId, otp }`
-- Returns: JWT token and user data (after successful verification)
-
-#### POST `/api/resend-otp`
-Resend OTP to user's email
-- Body: `{ userId }`
-- Returns: Success message
+- Returns: JWT token and user data
 
 #### GET `/api/me`
 Get current authenticated user information
@@ -270,7 +227,7 @@ Clock in clock out/
 ## Future Enhancements
 
 - Password reset functionality
-- ~~Email verification~~ ✅ **Implemented**
+- Email verification
 - Export reports to PDF/CSV
 - Email notifications
 - Mobile app
