@@ -17,7 +17,8 @@
     "body-parser": "^1.20.2",
     "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
