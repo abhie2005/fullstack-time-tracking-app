@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './Auth.css';
+import iconImage from '../Pictures/icon_clock_in_clock_out.png';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://fullstack-time-tracking-app-backend.onrender.com/api';
 
@@ -94,13 +95,8 @@ function Auth({ onLogin }) {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <h1>🕐 Clock In/Out System</h1>
-          <p className="auth-subtitle">
-            {isLogin ? 'Welcome back!' : 'Create your account'}
-          </p>
-          <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '8px' }}>
-            Backend: {API_BASE_URL}
-          </p>
+          <img src={iconImage} alt="Clock In/Out System" className="auth-icon" />
+          <h1>Clock In/Out System</h1>
         </div>
 
         {error && (
