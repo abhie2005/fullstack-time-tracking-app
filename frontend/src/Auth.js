@@ -14,6 +14,10 @@ function Auth({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [showOTPVerification, setShowOTPVerification] = useState(false);
+  const [otpData, setOtpData] = useState({ userId: null, email: '' });
+  const [otp, setOtp] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   // Test backend connection on mount
   useEffect(() => {
@@ -59,6 +63,17 @@ function Auth({ onLogin }) {
 
       const response = await axios.post(`${API_BASE_URL}${endpoint}`, data);
 
+      // Check if email verification is required
+      if (response.data.requiresVerification) {
+        setOtpData({
+          userId: response.data.userId,
+          email: response.data.email
+        });
+        setShowOTPVerification(true);
+        setLoading(false);
+        return;
+      }
+
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
 
@@ -89,6 +104,140 @@ function Auth({ onLogin }) {
       setLoading(false);
     }
   };
+
+  const handleOTPVerification = async (e) => {
+    e.preventDefault();
+    setError('');
+    setOtpLoading(true);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/verify-otp`, {
+        userId: otpData.userId,
+        otp: otp
+      });
+
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      onLogin(response.data.token, response.data.user);
+    } catch (err) {
+      console.error('OTP verification error:', err);
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Failed to verify OTP. Please try again.');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    setError('');
+    setOtpLoading(true);
+
+    try {
+      await axios.post(`${API_BASE_URL}/resend-otp`, {
+        userId: otpData.userId
+      });
+      setError('');
+      alert('OTP has been resent to your email. Please check your inbox.');
+    } catch (err) {
+      console.error('Resend OTP error:', err);
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Failed to resend OTP. Please try again.');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Show OTP verification screen if needed
+  if (showOTPVerification) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
+          <div className="auth-header">
+            <h1>📧 Email Verification</h1>
+            <p className="auth-subtitle">
+              Please verify your email address
+            </p>
+            <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '8px' }}>
+              We've sent a 6-digit OTP to <strong>{otpData.email}</strong>
+            </p>
+          </div>
+
+          {error && (
+            <div className="auth-error">{error}</div>
+          )}
+
+          <form onSubmit={handleOTPVerification} className="auth-form">
+            <div className="form-group">
+              <label htmlFor="otp">Enter OTP</label>
+              <input
+                type="text"
+                id="otp"
+                name="otp"
+                value={otp}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setOtp(value);
+                  setError('');
+                }}
+                required
+                placeholder="Enter 6-digit OTP"
+                maxLength={6}
+                style={{ 
+                  textAlign: 'center', 
+                  fontSize: '24px', 
+                  letterSpacing: '8px',
+                  fontWeight: 'bold'
+                }}
+              />
+            </div>
+
+            <button 
+              type="submit" 
+              className="auth-button"
+              disabled={otpLoading || otp.length !== 6}
+            >
+              {otpLoading ? 'Verifying...' : 'Verify OTP'}
+            </button>
+          </form>
+
+          <div className="auth-toggle">
+            <p>
+              Didn't receive the OTP?{' '}
+              <button
+                type="button"
+                className="toggle-link"
+                onClick={handleResendOTP}
+                disabled={otpLoading}
+              >
+                Resend OTP
+              </button>
+            </p>
+            <p style={{ marginTop: '10px' }}>
+              <button
+                type="button"
+                className="toggle-link"
+                onClick={() => {
+                  setShowOTPVerification(false);
+                  setOtpData({ userId: null, email: '' });
+                  setOtp('');
+                  setError('');
+                }}
+              >
+                Back to Login
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-container">

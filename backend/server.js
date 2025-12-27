@@ -6,10 +6,59 @@ const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || '9f2c7b8e1a4d5f6c3e0b9a7d2f4e6c8b1a5d9e7c0f3b8a6d4e2c1f5b9a';
+
+// Email configuration for OTP
+const emailTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT || 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || ''
+  }
+});
+
+// Generate 6-digit OTP
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Send OTP email
+const sendOTPEmail = async (email, otp) => {
+  try {
+    const mailOptions = {
+      from: process.env.SMTP_USER || 'noreply@clockinout.com',
+      to: email,
+      subject: 'Email Verification OTP - Clock In/Out System',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Email Verification</h2>
+          <p>Thank you for registering with Clock In/Out System!</p>
+          <p>Your One-Time Password (OTP) for email verification is:</p>
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
+            <h1 style="color: #007bff; font-size: 32px; margin: 0; letter-spacing: 5px;">${otp}</h1>
+          </div>
+          <p>This OTP will expire in 10 minutes.</p>
+          <p>If you didn't request this OTP, please ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #666; font-size: 12px;">This is an automated message, please do not reply.</p>
+        </div>
+      `
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log('OTP email sent:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('Error sending OTP email:', error);
+    return false;
+  }
+};
 
 // Middleware - CORS configuration
 // Normalize FRONTEND_URL (remove trailing slash for comparison, browsers send origin without trailing slash)
@@ -107,6 +156,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       is_admin INTEGER DEFAULT 0,
+      email_verified INTEGER DEFAULT 0,
+      otp TEXT,
+      otp_expires_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) {
@@ -116,6 +168,22 @@ const db = new sqlite3.Database(dbPath, (err) => {
         // Add is_admin column if it doesn't exist (for existing databases)
         db.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`, (err) => {
           // Ignore error if column already exists
+          if (err && !err.message.includes('duplicate column name')) {
+            console.log('Migration note:', err.message);
+          }
+        });
+        // Add email verification columns if they don't exist
+        db.run(`ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.log('Migration note:', err.message);
+          }
+        });
+        db.run(`ALTER TABLE users ADD COLUMN otp TEXT`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.log('Migration note:', err.message);
+          }
+        });
+        db.run(`ALTER TABLE users ADD COLUMN otp_expires_at DATETIME`, (err) => {
           if (err && !err.message.includes('duplicate column name')) {
             console.log('Migration note:', err.message);
           }
@@ -250,9 +318,9 @@ app.post('/api/register', async (req, res) => {
       console.log(`User will be admin: ${isAdmin === 1}, Total users: ${result.count}`);
       
       db.run(
-        'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
-        [username, email, hashedPassword, isAdmin],
-        function(err) {
+        'INSERT INTO users (username, email, password, is_admin, email_verified) VALUES (?, ?, ?, ?, ?)',
+        [username, email, hashedPassword, isAdmin, 0],
+        async function(err) {
           if (err) {
             console.error('Database error inserting user:', err);
             if (err.message.includes('UNIQUE constraint failed')) {
@@ -263,19 +331,39 @@ app.post('/api/register', async (req, res) => {
 
           console.log('User created successfully with ID:', this.lastID);
 
-          // Generate JWT token
-          const token = jwt.sign(
-            { id: this.lastID, username, email, isAdmin: isAdmin === 1 },
-            JWT_SECRET,
-            { expiresIn: '7d' }
+          // Generate and send OTP for email verification
+          const otp = generateOTP();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+          
+          // Save OTP to database
+          db.run(
+            'UPDATE users SET otp = ?, otp_expires_at = ? WHERE id = ?',
+            [otp, expiresAt.toISOString(), this.lastID],
+            async (err) => {
+              if (err) {
+                console.error('Error saving OTP:', err);
+                return res.status(500).json({ error: 'Error generating OTP' });
+              }
+              
+              // Send OTP email
+              const emailSent = await sendOTPEmail(email, otp);
+              
+              if (!emailSent) {
+                console.error('Failed to send OTP email');
+                return res.status(500).json({ 
+                  error: 'Failed to send verification email. Please check your email configuration.' 
+                });
+              }
+              
+              console.log('OTP sent to new user:', email);
+              res.status(201).json({
+                message: 'User registered successfully. Please verify your email.',
+                requiresVerification: true,
+                email: email,
+                userId: this.lastID
+              });
+            }
           );
-
-          console.log('JWT token generated successfully');
-          res.status(201).json({
-            message: 'User registered successfully',
-            token,
-            user: { id: this.lastID, username, email, isAdmin: isAdmin === 1 }
-          });
         }
       );
     });
@@ -318,7 +406,47 @@ app.post('/api/login', (req, res) => {
           return res.status(401).json({ error: 'Invalid username or password' });
         }
 
-        // Generate JWT token
+        // Check if email is verified
+        const isEmailVerified = user.email_verified === 1;
+        
+        if (!isEmailVerified) {
+          // Generate and send OTP
+          const otp = generateOTP();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+          
+          // Save OTP to database
+          db.run(
+            'UPDATE users SET otp = ?, otp_expires_at = ? WHERE id = ?',
+            [otp, expiresAt.toISOString(), user.id],
+            async (err) => {
+              if (err) {
+                console.error('Error saving OTP:', err);
+                return res.status(500).json({ error: 'Error generating OTP' });
+              }
+              
+              // Send OTP email
+              const emailSent = await sendOTPEmail(user.email, otp);
+              
+              if (!emailSent) {
+                console.error('Failed to send OTP email');
+                return res.status(500).json({ 
+                  error: 'Failed to send verification email. Please check your email configuration.' 
+                });
+              }
+              
+              console.log('OTP sent to user:', user.email);
+              return res.status(200).json({
+                message: 'Email verification required',
+                requiresVerification: true,
+                email: user.email,
+                userId: user.id
+              });
+            }
+          );
+          return;
+        }
+
+        // Email is verified, proceed with normal login
         const isAdmin = user.is_admin === 1;
         const token = jwt.sign(
           { id: user.id, username: user.username, email: user.email, isAdmin },
@@ -330,12 +458,140 @@ app.post('/api/login', (req, res) => {
         res.json({
           message: 'Login successful',
           token,
-          user: { id: user.id, username: user.username, email: user.email, isAdmin }
+          user: { id: user.id, username: user.username, email: user.email, isAdmin },
+          requiresVerification: false
         });
       } catch (error) {
         console.error('Error during login:', error);
         res.status(500).json({ error: 'Error during login' });
       }
+    }
+  );
+});
+
+// Verify OTP endpoint
+app.post('/api/verify-otp', async (req, res) => {
+  const { userId, otp } = req.body;
+
+  if (!userId || !otp) {
+    return res.status(400).json({ error: 'User ID and OTP are required' });
+  }
+
+  db.get(
+    'SELECT * FROM users WHERE id = ?',
+    [userId],
+    async (err, user) => {
+      if (err) {
+        console.error('Database error during OTP verification:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Check if OTP exists and is not expired
+      if (!user.otp || !user.otp_expires_at) {
+        return res.status(400).json({ error: 'No OTP found. Please request a new OTP.' });
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(user.otp_expires_at);
+
+      if (now > expiresAt) {
+        return res.status(400).json({ error: 'OTP has expired. Please request a new OTP.' });
+      }
+
+      if (user.otp !== otp) {
+        return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
+      }
+
+      // OTP is valid, mark email as verified and clear OTP
+      db.run(
+        'UPDATE users SET email_verified = 1, otp = NULL, otp_expires_at = NULL WHERE id = ?',
+        [userId],
+        (err) => {
+          if (err) {
+            console.error('Error updating email verification status:', err);
+            return res.status(500).json({ error: 'Error verifying email' });
+          }
+
+          // Generate JWT token
+          const isAdmin = user.is_admin === 1;
+          const token = jwt.sign(
+            { id: user.id, username: user.username, email: user.email, isAdmin },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+
+          console.log('Email verified successfully for user:', user.username);
+          res.json({
+            message: 'Email verified successfully',
+            token,
+            user: { id: user.id, username: user.username, email: user.email, isAdmin }
+          });
+        }
+      );
+    }
+  );
+});
+
+// Resend OTP endpoint
+app.post('/api/resend-otp', async (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  db.get(
+    'SELECT * FROM users WHERE id = ?',
+    [userId],
+    async (err, user) => {
+      if (err) {
+        console.error('Database error during resend OTP:', err);
+        return res.status(500).json({ error: err.message });
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (user.email_verified === 1) {
+        return res.status(400).json({ error: 'Email is already verified' });
+      }
+
+      // Generate new OTP
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+
+      // Save OTP to database
+      db.run(
+        'UPDATE users SET otp = ?, otp_expires_at = ? WHERE id = ?',
+        [otp, expiresAt.toISOString(), user.id],
+        async (err) => {
+          if (err) {
+            console.error('Error saving OTP:', err);
+            return res.status(500).json({ error: 'Error generating OTP' });
+          }
+
+          // Send OTP email
+          const emailSent = await sendOTPEmail(user.email, otp);
+
+          if (!emailSent) {
+            console.error('Failed to send OTP email');
+            return res.status(500).json({ 
+              error: 'Failed to send verification email. Please check your email configuration.' 
+            });
+          }
+
+          console.log('OTP resent to user:', user.email);
+          res.json({
+            message: 'OTP has been resent to your email',
+            email: user.email
+          });
+        }
+      );
     }
   );
 });
