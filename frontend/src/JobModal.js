@@ -9,7 +9,8 @@ function JobModal({ onClose, onJobCreated, editingJob }) {
   const [formData, setFormData] = useState({
     name: editingJob?.name || '',
     description: editingJob?.description || '',
-    hourly_rate: editingJob?.hourly_rate || 18
+    hourly_rate: editingJob?.hourly_rate || 18,
+    currency: editingJob?.currency || 'USD'
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,7 +83,34 @@ function JobModal({ onClose, onJobCreated, editingJob }) {
           </div>
 
           <div className="job-form-group">
-            <label htmlFor="hourly_rate">Hourly Rate ($)</label>
+            <label htmlFor="currency">Currency</label>
+            <select
+              id="currency"
+              name="currency"
+              value={formData.currency}
+              onChange={handleChange}
+              className="currency-select"
+            >
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="JPY">JPY (¥)</option>
+              <option value="CAD">CAD (C$)</option>
+              <option value="AUD">AUD (A$)</option>
+              <option value="CHF">CHF (Fr)</option>
+              <option value="CNY">CNY (¥)</option>
+              <option value="INR">INR (₹)</option>
+              <option value="BRL">BRL (R$)</option>
+              <option value="MXN">MXN ($)</option>
+              <option value="KRW">KRW (₩)</option>
+              <option value="SGD">SGD (S$)</option>
+              <option value="HKD">HKD (HK$)</option>
+              <option value="NZD">NZD (NZ$)</option>
+            </select>
+          </div>
+
+          <div className="job-form-group">
+            <label htmlFor="hourly_rate">Hourly Rate</label>
             <input
               type="number"
               id="hourly_rate"

@@ -130,6 +130,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
       name TEXT NOT NULL,
       description TEXT,
       hourly_rate REAL DEFAULT 18.0,
+      currency TEXT DEFAULT 'USD',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )`, (err) => {
@@ -137,6 +138,15 @@ const db = new sqlite3.Database(dbPath, (err) => {
         console.error('Error creating jobs table:', err.message);
       } else {
         console.log('Jobs table ready');
+        // Add currency column if it doesn't exist (for existing databases)
+        db.run(`ALTER TABLE jobs ADD COLUMN currency TEXT DEFAULT 'USD'`, (err) => {
+          // Ignore error if column already exists
+          if (err && !err.message.includes('duplicate column name')) {
+            console.log('Migration note:', err.message);
+          } else if (!err) {
+            console.log('Currency column added to jobs table');
+          }
+        });
       }
     });
     
@@ -462,17 +472,18 @@ app.get('/api/jobs', authenticateToken, (req, res) => {
 // Create a new job
 app.post('/api/jobs', authenticateToken, (req, res) => {
   const userId = req.user.id;
-  const { name, description, hourly_rate } = req.body;
+  const { name, description, hourly_rate, currency } = req.body;
   
   if (!name || name.trim() === '') {
     return res.status(400).json({ error: 'Job name is required' });
   }
   
   const rate = hourly_rate ? parseFloat(hourly_rate) : 18.0;
+  const jobCurrency = currency || 'USD';
   
   db.run(
-    'INSERT INTO jobs (user_id, name, description, hourly_rate) VALUES (?, ?, ?, ?)',
-    [userId, name.trim(), description || null, rate],
+    'INSERT INTO jobs (user_id, name, description, hourly_rate, currency) VALUES (?, ?, ?, ?, ?)',
+    [userId, name.trim(), description || null, rate, jobCurrency],
     function(err) {
       if (err) {
         return res.status(500).json({ error: err.message });
@@ -484,7 +495,8 @@ app.post('/api/jobs', authenticateToken, (req, res) => {
           user_id: userId,
           name: name.trim(),
           description: description || null,
-          hourly_rate: rate
+          hourly_rate: rate,
+          currency: jobCurrency
         }
       });
     }
@@ -495,7 +507,7 @@ app.post('/api/jobs', authenticateToken, (req, res) => {
 app.put('/api/jobs/:id', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const jobId = req.params.id;
-  const { name, description, hourly_rate } = req.body;
+  const { name, description, hourly_rate, currency } = req.body;
   
   // First verify the job belongs to the user
   db.get(
@@ -512,10 +524,11 @@ app.put('/api/jobs/:id', authenticateToken, (req, res) => {
       const updateName = name ? name.trim() : job.name;
       const updateDesc = description !== undefined ? description : job.description;
       const updateRate = hourly_rate ? parseFloat(hourly_rate) : job.hourly_rate;
+      const updateCurrency = currency || job.currency || 'USD';
       
       db.run(
-        'UPDATE jobs SET name = ?, description = ?, hourly_rate = ? WHERE id = ? AND user_id = ?',
-        [updateName, updateDesc, updateRate, jobId, userId],
+        'UPDATE jobs SET name = ?, description = ?, hourly_rate = ?, currency = ? WHERE id = ? AND user_id = ?',
+        [updateName, updateDesc, updateRate, updateCurrency, jobId, userId],
         function(err) {
           if (err) {
             return res.status(500).json({ error: err.message });
@@ -526,7 +539,8 @@ app.put('/api/jobs/:id', authenticateToken, (req, res) => {
               id: jobId,
               name: updateName,
               description: updateDesc,
-              hourly_rate: updateRate
+              hourly_rate: updateRate,
+              currency: updateCurrency
             }
           });
         }
@@ -776,7 +790,7 @@ app.post('/api/clock-out', authenticateToken, (req, res) => {
 app.get('/api/report', authenticateToken, (req, res) => {
   const { period = 'all', job_id } = req.query;
   const userId = req.user.id;
-  let query = 'SELECT cr.*, j.name as job_name, j.hourly_rate FROM clock_records cr LEFT JOIN jobs j ON cr.job_id = j.id WHERE cr.user_id = ?';
+  let query = 'SELECT cr.*, j.name as job_name, j.hourly_rate, j.currency FROM clock_records cr LEFT JOIN jobs j ON cr.job_id = j.id WHERE cr.user_id = ?';
   const params = [userId];
   
   // Filter by job if specified
@@ -814,6 +828,7 @@ app.get('/api/report', authenticateToken, (req, res) => {
       let hours = 0;
       let salary = 0;
       const hourlyRate = row.hourly_rate || 18.0; // Use job rate or default
+      const currency = row.currency || 'USD'; // Use job currency or default
       
       if (row.clock_in && row.clock_out) {
         const inTime = new Date(`${row.date}T${row.clock_in}`);
@@ -826,7 +841,8 @@ app.get('/api/report', authenticateToken, (req, res) => {
         ...row,
         hours: hours > 0 ? hours.toFixed(2) : null,
         salary: salary > 0 ? salary.toFixed(2) : null,
-        hourly_rate: hourlyRate
+        hourly_rate: hourlyRate,
+        currency: currency
       };
     });
     

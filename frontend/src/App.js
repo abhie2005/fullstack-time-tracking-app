@@ -253,9 +253,32 @@ function App() {
     return hours.toFixed(2);
   };
 
-  const formatCurrency = (amount) => {
+  // Helper function to get currency symbol
+  const getCurrencySymbol = (currencyCode) => {
+    const symbols = {
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£',
+      'JPY': '¥',
+      'CAD': 'C$',
+      'AUD': 'A$',
+      'CHF': 'Fr',
+      'CNY': '¥',
+      'INR': '₹',
+      'BRL': 'R$',
+      'MXN': '$',
+      'KRW': '₩',
+      'SGD': 'S$',
+      'HKD': 'HK$',
+      'NZD': 'NZ$'
+    };
+    return symbols[currencyCode] || currencyCode || '$';
+  };
+
+  const formatCurrency = (amount, currency = 'USD') => {
     if (!amount || amount === 'N/A') return 'N/A';
-    return `$${parseFloat(amount).toFixed(2)}`;
+    const symbol = getCurrencySymbol(currency);
+    return `${symbol}${parseFloat(amount).toFixed(2)}`;
   };
 
   const downloadExcelReport = () => {
@@ -264,6 +287,13 @@ function App() {
       setTimeout(() => setMessage(''), 3000);
       return;
     }
+
+    // Determine currency for Excel export (use first record's currency or default to USD)
+    const defaultCurrency = reportData.records.length > 0 && reportData.records[0].currency 
+      ? reportData.records[0].currency 
+      : 'USD';
+    const defaultCurrencySymbol = getCurrencySymbol(defaultCurrency);
+    const salaryColumnName = `Salary (${defaultCurrency})`;
 
     // Prepare data for Excel
     const excelData = reportData.records.map((record) => {
@@ -283,13 +313,15 @@ function App() {
       }
       
       const salary = record.salary ? parseFloat(record.salary) : null;
+      const recordCurrency = record.currency || defaultCurrency;
+      const currencySymbol = getCurrencySymbol(recordCurrency);
       
       return {
         'Date': formattedDate,
         'Clock In': record.clock_in || 'N/A',
         'Clock Out': record.clock_out || 'In Progress',
         'Hours': hours,
-        'Salary ($)': salary
+        [salaryColumnName]: salary ? `${currencySymbol}${salary.toFixed(2)}` : null
       };
     });
 
@@ -300,35 +332,35 @@ function App() {
       'Clock In': '',
       'Clock Out': '',
       'Hours': '',
-      'Salary ($)': ''
+      [salaryColumnName]: ''
     });
     excelData.push({
       'Date': 'Total Records',
       'Clock In': reportData.totalRecords,
       'Clock Out': '',
       'Hours': '',
-      'Salary ($)': ''
+      [salaryColumnName]: ''
     });
     excelData.push({
       'Date': 'Completed Records',
       'Clock In': reportData.completedRecords,
       'Clock Out': '',
       'Hours': '',
-      'Salary ($)': ''
+      [salaryColumnName]: ''
     });
     excelData.push({
       'Date': 'Total Hours',
       'Clock In': '',
       'Clock Out': '',
       'Hours': parseFloat(reportData.totalHours),
-      'Salary ($)': ''
+      [salaryColumnName]: ''
     });
     excelData.push({
       'Date': 'Total Salary',
       'Clock In': '',
       'Clock Out': '',
       'Hours': '',
-      'Salary ($)': parseFloat(reportData.totalSalary)
+      [salaryColumnName]: `${defaultCurrencySymbol}${parseFloat(reportData.totalSalary).toFixed(2)}`
     });
 
     // Create worksheet
@@ -425,7 +457,7 @@ function App() {
                   <div className="job-card-content">
                     <h3>{job.name}</h3>
                     {job.description && <p className="job-description">{job.description}</p>}
-                    <p className="job-rate">${job.hourly_rate}/hour</p>
+                    <p className="job-rate">{getCurrencySymbol(job.currency || 'USD')}{job.hourly_rate}/hour</p>
                   </div>
                   <div className="job-card-actions">
                     <button
@@ -548,7 +580,12 @@ function App() {
                 </div>
                 <div className="summary-item summary-item-salary">
                   <span className="summary-label">Total Salary:</span>
-                  <span className="summary-value">{formatCurrency(reportData.totalSalary)}</span>
+                  <span className="summary-value">
+                    {formatCurrency(
+                      reportData.totalSalary, 
+                      reportData.records.length > 0 ? reportData.records[0].currency : 'USD'
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -575,7 +612,7 @@ function App() {
                           <td>{record.clock_in || 'N/A'}</td>
                           <td>{record.clock_out || 'In Progress'}</td>
                           <td>{record.hours ? `${record.hours}h` : 'N/A'}</td>
-                          <td>{formatCurrency(record.salary)}</td>
+                          <td>{formatCurrency(record.salary, record.currency || 'USD')}</td>
                         </tr>
                       ))
                     )}
