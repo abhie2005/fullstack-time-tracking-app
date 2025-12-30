@@ -164,10 +164,70 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE clock_records ADD COLUMN job_id INTEGER`, (err) => {
           // Ignore error if column already exists
         });
+        
+        // Create permanent admin user if it doesn't exist
+        createPermanentAdmin();
       }
     });
   }
 });
+
+// Function to create permanent admin user
+async function createPermanentAdmin() {
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@clockinout.com';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  
+  // Check if admin user already exists
+  db.get(
+    'SELECT id FROM users WHERE username = ? OR email = ?',
+    [adminUsername, adminEmail],
+    async (err, existingUser) => {
+      if (err) {
+        console.error('Error checking for admin user:', err.message);
+        return;
+      }
+      
+      if (existingUser) {
+        // Admin exists, ensure it has admin privileges
+        db.run(
+          'UPDATE users SET is_admin = 1 WHERE id = ?',
+          [existingUser.id],
+          (err) => {
+            if (err) {
+              console.error('Error updating admin privileges:', err.message);
+            } else {
+              console.log('✅ Permanent admin user verified (ID:', existingUser.id + ')');
+            }
+          }
+        );
+        return;
+      }
+      
+      // Create new admin user
+      try {
+        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        db.run(
+          'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
+          [adminUsername, adminEmail, hashedPassword, 1],
+          function(err) {
+            if (err) {
+              console.error('Error creating permanent admin user:', err.message);
+            } else {
+              console.log('✅ Permanent admin user created successfully');
+              console.log('   Username:', adminUsername);
+              console.log('   Email:', adminEmail);
+              console.log('   Password:', adminPassword);
+              console.log('   ⚠️  Please change the default password after first login!');
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error hashing admin password:', error);
+      }
+    }
+  );
+}
 
 // Authentication middleware
 const authenticateToken = (req, res, next) => {

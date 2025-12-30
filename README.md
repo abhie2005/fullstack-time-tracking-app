@@ -98,7 +98,17 @@ For auto-reload during development:
 
 ### Admin Features
 
-The **first user** to register automatically becomes the **admin/owner**. As an admin, you can:
+**Permanent Admin Account:**
+- A permanent admin account is automatically created on first startup
+- **Default credentials:**
+  - Username: `admin`
+  - Email: `admin@clockinout.com`
+  - Password: `admin123`
+- This admin account persists across database resets and server restarts
+- You can customize these credentials using environment variables: `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
+- **⚠️ Important:** Change the default password after first login for security!
+
+**Note:** The **first user** to register (after the permanent admin) will also become an admin. As an admin, you can:
 
 - Click the **"👥 View Users"** button in the header to see all registered users
 - View user details including:

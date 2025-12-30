@@ -13,4 +13,11 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: https://fullstack-time-tracker-app.onrender.com/
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_EMAIL
+        value: admin@clockinout.com
+      - key: ADMIN_PASSWORD
+        sync: false
+        # Set this to your desired admin password in Render dashboard
 
