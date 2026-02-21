@@ -1,4 +1,4 @@
-# Clock In/Clock Out System !
+# Clock In/Clock Out System
 
 A full stack web application to track your office hours with clock in/out functionality and detailed reporting.
 
