@@ -244,10 +244,6 @@ Clock in clock out/
 - Location-based clock in/out verification
 - Admin dashboard for multi-user management
 
-## Deployment
-
-See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed instructions on deploying your application to production.
-
 ## License
 
 ISC
