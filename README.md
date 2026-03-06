@@ -72,7 +72,7 @@ A full stack web application to track your office hours with clock in/out functi
 
 ### Development Mode
 
-For auto-reload during development:
+For auto reload during development:
 
 - Backend: Use `npm run dev` (requires nodemon, install globally: `npm install -g nodemon`)
 - Frontend: `npm start` already includes hot-reload
