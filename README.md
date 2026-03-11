@@ -172,7 +172,7 @@ Get current authenticated user information
 #### GET `/api/admin/users`
 Get list of all users in the system
 - Requires: Bearer token + Admin privileges
-- Returns: List of all users with their statistics
+- Returns: List of all users with their statistics. 
 
 ### Clock In/Out Endpoints (All require authentication)
 
