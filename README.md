@@ -7,9 +7,9 @@ A full stack web application to track your office hours with clock in/out functi
 ## Features
 
 - ✅ User authentication (Login/Register)
-- ✅ Secure JWT token-based authentication
+- ✅ Secure JWT token based authentication
 - ✅ Clock In/Out functionality
-- ✅ Real-time status display
+- ✅ Real time status display
 - ✅ Automatic date and time tracking
 - ✅ Report generation (Today, Last 7 Days, Last 30 Days, All Time)
 - ✅ Total hours calculation
