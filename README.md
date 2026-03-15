@@ -1,6 +1,6 @@
 # Clock In/Clock Out System
 
-A full stack web application to track your office hours with clock in/out functionality and detailed reporting with hourly rate.
+A full stack web application to track your office hours with clock in/out functionality and detailed reporting.
 
 📊 **UML Diagrams**: See [UML_DIAGRAMS.md](./UML_DIAGRAMS.md) for detailed architecture, database schema, and sequence diagrams.
 
