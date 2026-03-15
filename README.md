@@ -20,7 +20,6 @@ A full stack web application to track your office hours with clock in/out functi
 - ✅ User-specific data isolation
 
 ## Tech Stack
-
 ### Backend
 - Node.js
 - Express.js
