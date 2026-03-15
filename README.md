@@ -17,7 +17,7 @@ A full stack web application to track your office hours with clock in/out functi
 - ✅ Excel report download (export reports as .xlsx files)
 - ✅ Modern, responsive UI
 - ✅ SQLite database for data persistence
-- ✅ User-specific data isolation
+- ✅ User specific data isolation
 
 ## Tech Stack
 ### Backend
