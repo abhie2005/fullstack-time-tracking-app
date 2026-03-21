@@ -23,7 +23,7 @@ A full stack web application to track your office hours with clock in/out functi
 ### Backend
 - Node.js
 - Express.js
-- SQLite3
+- SQLite
 - JWT (JSON Web Tokens) for authentication
 - bcryptjs for password hashing
 
